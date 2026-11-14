@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Next train</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #ffffff;
+    --wash: #f3f5f8;
+    --ink: #15181d;
+    --muted: #5b6370;
+    --faint: #8a919c;
+    --rule: #e4e7ec;
+    --signal: #0b57d0;
+    --warn-bg: #fff4e0;
+    --warn: #8a4700;
+    --bad-bg: #fdecec;
+    --bad: #a8231b;
+    --ok: #1e7a46;
+    --cond: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+    --body: 'Barlow', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 16px/1.45 var(--body);
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  /* Top bar */
+  .bar {
+    position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.94);
+    backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--rule); padding-top: env(safe-area-inset-top);
+  }
+  .bar-in { display: flex; align-items: center; gap: 16px; height: 64px; }
+  .brand {
+    font: 700 24px/1 var(--cond); color: var(--ink); text-decoration: none;
+    white-space: nowrap; letter-spacing: -.01em;
+  }
+  .search { position: relative; flex: 1; max-width: 520px; }
+  .search svg { position: absolute; left: 14px; top: 50%; translate: 0 -50%; color: var(--faint); pointer-events: none; }
+  .search input {
+    width: 100%; height: 44px; border: 1px solid transparent; border-radius: 12px;
+    background: var(--wash); padding: 0 14px 0 42px; font-size: 16px; transition: background .15s, border-color .15s;
+  }
+  .search input:focus { outline: none; background: var(--paper); border-color: var(--signal); }
+  .search input::placeholder { color: var(--faint); }
+  .results {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); margin: 0; padding: 6px;
+    list-style: none; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px;
+    box-shadow: 0 18px 40px -18px rgba(21,24,29,.35); max-height: 60vh; overflow: auto;
+  }
+  .results li { padding: 10px 12px; border-radius: 9px; cursor: pointer; }
+  .results li[aria-selected="true"], .results li:hover { background: var(--wash); }
+  .results .r-name { font-weight: 600; display: block; }
+  .results .r-modes { font-size: 14px; color: var(--muted); }
+  .results .r-note { color: var(--muted); cursor: default; }
+  .results .r-note:hover { background: none; }
+
+  /* Intro */
+  .intro { padding: 56px 0 40px; max-width: 640px; }
+  .intro h1 { font: 700 clamp(40px, 8vw, 64px)/.95 var(--cond); letter-spacing: -.015em; margin: 0 0 14px; }
+  .intro .lede { font-size: 18px; color: var(--muted); margin: 0 0 36px; max-width: 34em; }
+  .steps { list-style: none; counter-reset: step; margin: 0 0 40px; padding: 0; display: grid; gap: 18px; }
+  .steps li { counter-increment: step; display: grid; grid-template-columns: 44px 1fr; align-items: baseline; }
+  .steps li::before { content: counter(step); font: 700 34px/1 var(--cond); color: var(--signal); }
+  .steps strong { display: block; font-weight: 600; font-size: 17px; }
+  .steps span { color: var(--muted); }
+  .recents h2 { font: 600 15px/1 var(--body); color: var(--muted); margin: 0 0 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1px solid var(--rule); background: var(--paper); border-radius: 999px;
+    padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 15px;
+  }
+  .chip:hover { border-color: var(--faint); }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+  /* Station */
+  .st-head { padding: 32px 0 6px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+  .st-head h1 { font: 700 clamp(38px, 7vw, 58px)/.95 var(--cond); letter-spacing: -.015em; margin: 0; }
+  .updated { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .updated.err { color: var(--bad); }
+  .status { display: grid; gap: 8px; margin: 18px 0 0; }
+  .status .good { color: var(--ok); font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .status .good::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .alert { border-radius: 12px; padding: 12px 14px; background: var(--warn-bg); color: var(--warn); }
+  .alert.bad { background: var(--bad-bg); color: var(--bad); }
+  .alert summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+  .alert summary::-webkit-details-marker { display: none; }
+  .alert summary::after { content: "Details"; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+  .alert[open] summary::after { content: "Hide"; }
+  .alert p { margin: 8px 0 0; color: var(--ink); font-size: 15px; }
+  .filters { margin: 22px 0 0; }
+
+  .board { display: grid; gap: 36px 40px; padding: 28px 0 48px; }
+  @media (min-width: 760px) { .board { grid-template-columns: 1fr 1fr; } }
+  .dir { border-top: 5px solid var(--c); padding-top: 10px; min-width: 0; }
+  .dir h2 { margin: 0 0 2px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .dir h2 .ln { font: 600 22px/1.1 var(--cond); }
+  .dir h2 .bd { font: 500 15px/1 var(--body); color: var(--muted); }
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .dest { min-width: 0; }
+  .dest strong { display: block; font-weight: 600; font-size: 18px; line-height: 1.25; overflow-wrap: anywhere; }
+  .dest .sub { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+  .eta { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .eta b { font: 600 34px/1 var(--cond); }
+  .eta small { font-size: 14px; color: var(--muted); margin-left: 3px; }
+  .eta .at { display: block; font-size: 13px; color: var(--faint); margin-top: 2px; }
+  .eta.due b { color: var(--signal); }
+  .row:first-child .eta b { font-size: 40px; }
+  .more { margin-top: 10px; background: none; border: 0; padding: 6px 0; color: var(--signal); font-weight: 600; cursor: pointer; }
+  .empty { color: var(--muted); padding: 14px 0; }
+  .notice { margin: 28px 0; padding: 16px; border-radius: 12px; background: var(--wash); }
+  .notice strong { display: block; margin-bottom: 2px; }
+
+  .skeleton .row { color: transparent; }
+  .skeleton .bar-s { height: 14px; border-radius: 6px; background: var(--wash); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .board.enter .dir { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
+    .board.enter .dir:nth-child(2) { animation-delay: .06s; }
+    .board.enter .dir:nth-child(3) { animation-delay: .12s; }
+    .board.enter .dir:nth-child(n+4) { animation-delay: .18s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  }
+
+  /* Footer */
+  .foot { border-top: 1px solid var(--rule); padding-top: 18px; padding-bottom: 40px; font-size: 14px; color: var(--muted); }
+  .foot details { margin-bottom: 12px; }
+  .foot summary { cursor: pointer; color: var(--ink); font-weight: 500; }
+  .foot input { margin-top: 10px; width: 100%; max-width: 420px; height: 40px; border: 1px solid var(--rule); border-radius: 10px; padding: 0 12px; background: var(--paper); }
+  .foot p { margin: 8px 0 0; }
+  .foot a { color: inherit; }
+  [hidden] { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap bar-in">
+    <a class="brand" href="#" id="home">Next train</a>
+    <div class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search a station" autocomplete="off" spellcheck="false"
+             role="combobox" aria-label="Search for a station" aria-expanded="false" aria-controls="results" aria-autocomplete="list">
+      <ul id="results" class="results" role="listbox" hidden></ul>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="intro" class="intro">
+    <h1>Live trains for any London station</h1>
+    <p class="lede">Every train due at the station, in both directions, across the Tube, Overground, Elizabeth line, DLR and trams.</p>
+    <ol class="steps">
+      <li><div><strong>Search for a station</strong><span>Type a few letters of its name in the box at the top.</span></div></li>
+      <li><div><strong>Pick it from the list</strong><span>You'll see every line that stops there, split by direction.</span></div></li>
+      <li><div><strong>Leave it open</strong><span>Times count down live and refresh every 30 seconds. Tap a line to show only that line.</span></div></li>
+    </ol>
+    <div id="recents" class="recents" hidden>
+      <h2>Recent stations</h2>
+      <div class="chips" id="recent-chips"></div>
+    </div>
+  </section>
+
+  <section id="station" hidden>
+    <div class="st-head">
+      <h1 id="st-name"></h1>
+      <span id="updated" class="updated" aria-live="polite"></span>
+    </div>
+    <div id="status" class="status"></div>
+    <div id="filters" class="filters chips" hidden></div>
+    <div id="board" class="board"></div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <details>
+    <summary>TfL app key</summary>
+    <label for="key" class="sr">TfL app key</label>
+    <input id="key" placeholder="Paste your key from api-portal.tfl.gov.uk" autocomplete="off" spellcheck="false">
+    <p>Optional. Without a key TfL limits how often you can refresh. The key is saved in this browser only, never in the page's code.</p>
+  </details>
+  <p>Live predictions from Transport for London open data. Add this page to your home screen to use it like an app.</p>
+</footer>
+
+<script>
+const API = 'https://api.tfl.gov.uk';
+const MODES = ['tube', 'overground', 'elizabeth-line', 'dlr', 'tram'];
+const MODE_LABEL = { tube: 'Tube', overground: 'Overground', 'elizabeth-line': 'Elizabeth line', dlr: 'DLR', tram: 'Tram' };
+const STATION_TYPES = ['NaptanMetroStation', 'NaptanRailStation'];
+const ARRIVALS_EVERY = 30000;
+const STATUS_EVERY = 120000;
+const ROWS_SHOWN = 4;
+const COLOURS = {
+  bakerloo: '#B26300', central: '#DC241F', circle: '#FFC80A', district: '#007D32',
+  'hammersmith-city': '#F589A6', jubilee: '#838D93', metropolitan: '#9B0058', northern: '#15181d',
+  piccadilly: '#0019A8', victoria: '#039BE5', 'waterloo-city': '#76D0BD', dlr: '#00AFAD',
+  elizabeth: '#6950A1', liberty: '#61686B', lioness: '#FAA61A', mildmay: '#0071FD',
+  suffragette: '#18A95D', weaver: '#823A62', windrush: '#EE2E24', tram: '#5FB526'
+};
+const BOUND_ORDER = ['Northbound', 'Southbound', 'Eastbound', 'Westbound', 'Inner Rail', 'Outer Rail'];
+
+// ---------- helpers ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const cleanName = n => String(n || '')
+  .replace(/\s+(Underground|Rail|DLR|Tram|Elizabeth line)\s+Station$/i, '')
+  .replace(/\s+(Station|Stop)$/i, '').trim();
+const colour = id => COLOURS[id] || '#5b6370';
+const cap = s => s.replace(/\b\w/g, c => c.toUpperCase());
+
+let appKey = store.get('appKey', '');
+let recents = store.get('recents', []);
+
+async function get(path, params = {}) {
+  const u = new URL(API + path);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  if (appKey) u.searchParams.set('app_key', appKey);
+  let r;
+  try { r = await fetch(u); }
+  catch { throw new Error("Can't reach TfL. Check your connection."); }
+  if (r.status === 429) throw new Error('TfL is limiting requests. Add a free app key at the bottom of the page.');
+  if (!r.ok) throw new Error(`TfL returned an error (${r.status}).`);
+  return r.json();
+}
+
+// ---------- state ----------
+let state = null;
+let loadToken = 0;
+
+function freshState(id) {
+  return { id, name: '', ids: [], lines: [], lineNames: {}, arrivals: [], fetchedAt: 0,
+           status: {}, filter: 'all', expanded: new Set(), error: null, loading: true, statusLoaded: false };
+}
+
+// ---------- search ----------
+const q = $('#q'), results = $('#results');
+let searchTimer, searchToken = 0, matches = [], active = -1;
+
+function openResults(html) {
+  results.innerHTML = html; results.hidden = false; q.setAttribute('aria-expanded', 'true');
+}
+function closeResults() {
+  results.hidden = true; q.setAttribute('aria-expanded', 'false'); active = -1; matches = [];
+}
+
+q.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const term = q.value.trim();
+  if (term.length < 2) { closeResults(); return; }
+  searchTimer = setTimeout(() => runSearch(term), 220);
+});
+
+async function runSearch(term) {
+  const t = ++searchToken;
+  openResults('<li class="r-note">Searching…</li>');
+  try {
+    const res = await get('/StopPoint/Search/' + encodeURIComponent(term), { modes: MODES.join(','), maxResults: '10' });
+    if (t !== searchToken) return;
+    matches = (res.matches || []).map(m => ({ id: m.id, name: cleanName(m.name), modes: (m.modes || []).filter(x => MODES.includes(x)) }));
+    active = matches.length ? 0 : -1;
+    if (!matches.length) { openResults(`<li class="r-note">No stations match “${esc(term)}”. Try fewer letters.</li>`); return; }
+    renderResults();
+  } catch (e) {
+    if (t === searchToken) openResults(`<li class="r-note">${esc(e.message)}</li>`);
+  }
+}
+
+function renderResults() {
+  openResults(matches.map((m, i) => `
+    <li role="option" id="opt-${i}" data-i="${i}" aria-selected="${i === active}">
+      <span class="r-name">${esc(m.name)}</span>
+      <span class="r-modes">${esc(m.modes.map(x => MODE_LABEL[x]).join(', '))}</span>
+    </li>`).join(''));
+  q.setAttribute('aria-activedescendant', active >= 0 ? 'opt-' + active : '');
+}
+
+q.addEventListener('keydown', e => {
+  if (results.hidden || !matches.length) { if (e.key === 'Escape') q.blur(); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); active = (active + 1) % matches.length; renderResults(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); active = (active - 1 + matches.length) % matches.length; renderResults(); }
+  else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); choose(matches[active]); }
+  else if (e.key === 'Escape') closeResults();
+});
+results.addEventListener('mousedown', e => {
+  const li = e.target.closest('li[data-i]');
+  if (li) { e.preventDefault(); choose(matches[+li.dataset.i]); }
+});
+document.addEventListener('click', e => { if (!e.target.closest('.search')) closeResults(); });
+
+function choose(m) {
+  closeResults(); q.value = ''; q.blur();
+  goTo(m.id, m.name);
+}
+
+// ---------- routing ----------
+const nameHints = {};
+function goTo(id, name) {
+  if (name) nameHints[id] = name;
+  if (location.hash.slice(1) === id) openStation(id);
+  else location.hash = id;
+}
+window.addEventListener('hashchange', route);
+function route() {
+  const id = decodeURIComponent(location.hash.slice(1));
+  if (id) openStation(id); else showIntro();
+}
+
+function showIntro() {
+  loadToken++; state = null;
+  document.title = 'Next train';
+  $('#station').hidden = true; $('#intro').hidden = false;
+  renderRecents();
+}
+
+function renderRecents() {
+  $('#recents').hidden = !recents.length;
+  $('#recent-chips').innerHTML = recents.map(r =>
+    `<button class="chip" data-go="${esc(r.id)}">${esc(r.name)}</button>`).join('');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-go]');
+  if (b) goTo(b.dataset.go, b.textContent);
+});
+
+function addRecent(id, name) {
+  recents = [{ id, name }, ...recents.filter(r => r.id !== id)].slice(0, 6);
+  store.set('recents', recents);
+}
+
+// ---------- station ----------
+async function openStation(id) {
+  const token = ++loadToken;
+  state = freshState(id);
+  state.name = nameHints[id] || recents.find(r => r.id === id)?.name || '';
+  $('#intro').hidden = true; $('#station').hidden = false;
+  window.scrollTo({ top: 0 });
+  renderAll();
+
+  try {
+    const sp = await get('/StopPoint/' + encodeURIComponent(id));
+    if (token !== loadToken) return;
+    state.name = cleanName(sp.commonName) || state.name;
+    let stops = id.startsWith('HUB') ? (sp.children || []).filter(c => STATION_TYPES.includes(c.stopType)) : [sp];
+    if (!stops.length) stops = [sp];
+    state.ids = [...new Set(stops.map(s => s.naptanId || s.id))];
+    const lines = new Set();
+    for (const s of [sp, ...stops]) {
+      for (const g of s.lineModeGroups || []) if (MODES.includes(g.modeName)) (g.lineIdentifier || []).forEach(l => lines.add(l));
+      for (const l of s.lines || []) state.lineNames[l.id] = l.name;
+    }
+    state.lines = [...lines];
+    addRecent(id, state.name);
+    document.title = state.name + ' | Next train';
+  } catch (e) {
+    if (token !== loadToken) return;
+    state.loading = false; state.error = e.message; renderAll(); return;
+  }
+  renderHeader();
+  await Promise.all([refreshArrivals(true), refreshStatus()]);
+}
+
+async function refreshArrivals(first = false) {
+  if (!state || !state.ids.length) return;
+  const token = loadToken;
+  try {
+    const lists = await Promise.all(state.ids.map(i => get(`/StopPoint/${encodeURIComponent(i)}/Arrivals`)));
+    if (token !== loadToken) return;
+    const seen = new Set(), out = [];
+    for (const a of lists.flat()) {
+      if (!MODES.includes(a.modeName)) continue;
+      const k = a.vehicleId && a.vehicleId !== '000'
+        ? [a.lineId, a.vehicleId, a.direction, Math.round(a.timeToStation / 90)].join('|')
+        : a.id;
+      if (seen.has(k)) continue;
+      seen.add(k); out.push(a);
+      if (a.lineName) state.lineNames[a.lineId] = state.lineNames[a.lineId] || a.lineName;
+    }
+    state.arrivals = out; state.fetchedAt = Date.now(); state.error = null;
+  } catch (e) {
+    if (token !== loadToken) return;
+    state.error = e.message;
+  }
+  state.loading = false;
+  renderFilters(); renderBoard(first); renderUpdated();
+}
+
+async function refreshStatus() {
+  if (!state || !state.lines.length) return;
+  const token = loadToken;
+  try {
+    const res = await get('/Line/' + state.lines.map(encodeURIComponent).join(',') + '/Status');
+    if (token !== loadToken) return;
+    state.status = {};
+    for (const l of res) {
+      const worst = (l.lineStatuses || []).reduce((w, s) => (!w || s.statusSeverity < w.statusSeverity ? s : w), null);
+      state.lineNames[l.id] = l.name;
+      state.status[l.id] = { text: worst?.statusSeverityDescription || 'Good Service', reason: worst?.reason || '' };
+    }
+    state.statusLoaded = true;
+    renderStatus();
+  } catch { /* status is a nice-to-have; ignore failures */ }
+}
+
+// ---------- grouping ----------
+function lineLabel(id) {
+  const n = state.lineNames[id] || cap(id.replace(/-/g, ' '));
+  return /line$|^DLR$|tram/i.test(n) ? n : n + ' line';
+}
+
+function platformOf(p) {
+  p = (p || '').trim();
+  if (!p || /unknown|^null$/i.test(p)) return '';
+  const m = p.match(/Platform\s*([\w-]+)/i);
+  if (m) return 'Platform ' + m[1];
+  if (/^[\w-]{1,4}$/.test(p)) return 'Platform ' + p;
+  return '';
+}
+
+function boundOf(a) {
+  const p = a.platformName || '';
+  const m = p.match(/\b(North|South|East|West)bound\b/i) || p.match(/\b(Inner|Outer) Rail\b/i);
+  if (m) return cap(m[0].toLowerCase());
+  const plat = platformOf(p);
+  if (plat) return plat;
+  if (a.direction === 'inbound' || a.direction === 'outbound') return cap(a.direction);
+  return 'All trains';
+}
+
+function boundRank(b) {
+  const i = BOUND_ORDER.indexOf(b);
+  if (i >= 0) return i;
+  const n = parseInt((b.match(/\d+/) || [])[0], 10);
+  return 100 + (isNaN(n) ? 50 : n);
+}
+
+function secsLeft(a) { return a.timeToStation - (Date.now() - state.fetchedAt) / 1000; }
+
+function groups() {
+  const map = new Map();
+  for (const a of state.arrivals) {
+    if (state.filter !== 'all' && a.lineId !== state.filter) continue;
+    if (secsLeft(a) < -20) continue;
+    const bound = boundOf(a);
+    const key = a.lineId + '|' + bound;
+    if (!map.has(key)) map.set(key, { key, lineId: a.lineId, bound, trains: [] });
+    map.get(key).trains.push(a);
+  }
+  return [...map.values()]
+    .map(g => (g.trains.sort((x, y) => x.timeToStation - y.timeToStation), g))
+    .sort((x, y) => lineLabel(x.lineId).localeCompare(lineLabel(y.lineId)) || boundRank(x.bound) - boundRank(y.bound));
+}
+
+// ---------- rendering ----------
+function renderAll() { renderHeader(); renderStatus(); renderFilters(); renderBoard(true); renderUpdated(); }
+
+function renderHeader() { $('#st-name').textContent = state.name || 'Loading station…'; }
+
+function renderUpdated() {
+  const el = $('#updated');
+  if (!state) return;
+  el.classList.toggle('err', !!state.error && !!state.fetchedAt);
+  if (!state.fetchedAt) { el.textContent = state.loading ? 'Loading live times…' : ''; return; }
+  const s = Math.round((Date.now() - state.fetchedAt) / 1000);
+  const ago = s < 10 ? 'just now' : s < 60 ? `${s} seconds ago` : `${Math.round(s / 60)} min ago`;
+  el.textContent = state.error ? `Couldn't refresh. Last updated ${ago}.` : `Updated ${ago}`;
+}
+
+function renderStatus() {
+  const el = $('#status');
+  if (!state.statusLoaded) { el.innerHTML = ''; return; }
+  const issues = state.lines
+    .map(id => ({ id, ...(state.status[id] || {}) }))
+    .filter(s => s.text && !/good service|no issues/i.test(s.text));
+  if (!issues.length) { el.innerHTML = '<div class="good">Good service on every line here</div>'; return; }
+  el.innerHTML = issues.map(s => {
+    const severe = /suspend|severe|closed|closure|not running/i.test(s.text);
+    const reason = s.reason ? `<p>${esc(s.reason)}</p>` : '';
+    return `<details class="alert${severe ? ' bad' : ''}"><summary><span>${esc(lineLabel(s.id))}: ${esc(s.text.toLowerCase())}</span></summary>${reason}</details>`;
+  }).join('');
+}
+
+function renderFilters() {
+  const el = $('#filters');
+  const ids = [...new Set([...state.lines, ...state.arrivals.map(a => a.lineId)])]
+    .sort((a, b) => lineLabel(a).localeCompare(lineLabel(b)));
+  el.hidden = ids.length < 2;
+  if (el.hidden) return;
+  if (state.filter !== 'all' && !ids.includes(state.filter)) state.filter = 'all';
+  el.innerHTML = `<button class="chip" data-filter="all" aria-pressed="${state.filter === 'all'}">All lines</button>` +
+    ids.map(id => `<button class="chip" data-filter="${esc(id)}" aria-pressed="${state.filter === id}" style="--c:${colour(id)}">
+      <span class="dot"></span>${esc(lineLabel(id).replace(/ line$/, ''))}</button>`).join('');
+}
+$('#filters').addEventListener('click', e => {
+  const b = e.target.closest('[data-filter]');
+  if (!b) return;
+  state.filter = b.dataset.filter;
+  renderFilters(); renderBoard(true);
+});
+
+function etaHTML(a) {
+  const s = secsLeft(a);
+  const at = new Date(a.expectedArrival).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  if (s < 45) return `<div class="eta due"><b>Due</b><span class="at">${at}</span></div>`;
+  const m = Math.round(s / 60);
+  return `<div class="eta"><b>${m}</b><small>min</small><span class="at">${at}</span></div>`;
+}
+
+function rowHTML(a, g) {
+  const dest = cleanName(a.destinationName) || cleanName(a.towards) || 'Check front of train';
+  const bits = [];
+  const plat = platformOf(a.platformName);
+  if (plat && plat !== g.bound) bits.push(plat);
+  if (a.currentLocation) bits.push(a.currentLocation);
+  else if (a.towards && cleanName(a.towards) !== dest && !/check front/i.test(a.towards)) bits.push('Towards ' + a.towards);
+  return `<li class="row"><div class="dest"><strong>${esc(dest)}</strong>${bits.length ? `<span class="sub">${esc(bits.join('. '))}</span>` : ''}</div>${etaHTML(a)}</li>`;
+}
+
+function renderBoard(animate = false) {
+  const el = $('#board');
+  if (!state) return;
+  if (state.loading && !state.fetchedAt) {
+    el.className = 'board';
+    el.innerHTML = [0, 1].map(() => `<section class="dir skeleton" style="--c:var(--rule)">
+      <div class="bar-s" style="width:40%;height:20px"></div>
+      ${'<div class="row"><div class="bar-s" style="width:70%"></div><div class="bar-s" style="width:40px"></div></div>'.repeat(3)}
+    </section>`).join('');
+    return;
+  }
+  if (!state.fetchedAt && state.error) {
+    el.className = 'board';
+    el.innerHTML = `<div class="notice"><strong>Couldn't load this station</strong>${esc(state.error)} Try again, or search for another station.</div>`;
+    return;
+  }
+  const gs = groups();
+  if (!gs.length) {
+    el.className = 'board';
+    el.innerHTML = `<div class="notice"><strong>No trains predicted right now</strong>Services may have finished for the night, or this station is closed. Times will appear here as soon as TfL has them.</div>`;
+    return;
+  }
+  el.className = 'board' + (animate ? ' enter' : '');
+  el.innerHTML = gs.map(g => {
+    const open = state.expanded.has(g.key);
+    const shown = open ? g.trains : g.trains.slice(0, ROWS_SHOWN);
+    const extra = g.trains.length - ROWS_SHOWN;
+    return `<section class="dir" style="--c:${colour(g.lineId)}">
+      <h2><span class="ln">${esc(lineLabel(g.lineId))}</span><span class="bd">${esc(g.bound)}</span></h2>
+      <ol class="rows">${shown.map(a => rowHTML(a, g)).join('')}</ol>
+      ${extra > 0 ? `<button class="more" data-more="${esc(g.key)}">${open ? 'Show fewer' : `Show ${extra} more`}</button>` : ''}
+    </section>`;
+  }).join('');
+}
+$('#board').addEventListener('click', e => {
+  const b = e.target.closest('[data-more]');
+  if (!b) return;
+  const k = b.dataset.more;
+  state.expanded.has(k) ? state.expanded.delete(k) : state.expanded.add(k);
+  renderBoard();
+});
+
+// ---------- app key ----------
+const keyInput = $('#key');
+keyInput.value = appKey;
+keyInput.addEventListener('change', () => {
+  appKey = keyInput.value.trim(); store.set('appKey', appKey);
+  if (state) refreshArrivals();
+});
+
+// ---------- timers ----------
+setInterval(() => { if (state && state.fetchedAt) { renderBoard(); renderUpdated(); } }, 5000);
+setInterval(() => { if (state && !document.hidden) refreshArrivals(); }, ARRIVALS_EVERY);
+setInterval(() => { if (state && !document.hidden) refreshStatus(); }, STATUS_EVERY);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state && Date.now() - state.fetchedAt > 15000) { refreshArrivals(); refreshStatus(); }
+});
+
+route();
+</script>
+</body>
+</html>
